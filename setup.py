@@ -14,6 +14,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/HachiroSan/google-pronouncer",
     project_urls={
+        "Homepage": "https://github.com/HachiroSan/google-pronouncer",
         "Bug Tracker": "https://github.com/HachiroSan/google-pronouncer/issues",
         "Documentation": "https://github.com/HachiroSan/google-pronouncer#readme",
     },
