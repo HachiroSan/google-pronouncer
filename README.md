@@ -10,26 +10,47 @@ pip install google-pronouncer
 
 ## Command Line Usage
 
-The package provides a command-line interface with several commands:
+The package provides a simple command-line interface:
 
 ### Download Pronunciations
 
 ```bash
-# Download all accents for words
-google-pronouncer download hello world
+# Download US pronunciation (default) - saves in current directory
+google-pronouncer -d hello world
 
-# Download specific accent (gb/us)
-google-pronouncer download hello -a gb
+# Download British pronunciation
+google-pronouncer -d hello -a gb
+
+# Download both accents (automatically uses subdirectories)
+google-pronouncer -d hello -a all
+
+# Save files in a specific directory
+google-pronouncer -d hello -o ./pronunciations
+
+# Force using subdirectories even for single accent
+google-pronouncer -d hello --use-subdirs
+
+# Download from a file (one word per line)
+google-pronouncer -f words.txt
 
 # Force fresh download (ignore cache)
-google-pronouncer download hello --force-download
+google-pronouncer -d hello --force-download
 
 # Disable cache usage
-google-pronouncer download hello --no-cache
+google-pronouncer -d hello --no-cache
 
-# Specify output directory
-google-pronouncer download hello -o ./my-pronunciations
+# Download with verbose logging
+google-pronouncer -v -d hello world
 ```
+
+### File Organization
+
+By default:
+- Files are saved in the current directory
+- Single accent downloads: Saved as `word_accent.mp3`
+- Multiple accent downloads: Organized in subdirectories as `word/word_accent.mp3`
+- Use `-o` to specify a different output directory
+- Use `--use-subdirs` to force subdirectory organization even for single accent downloads
 
 ### Cache Management
 
@@ -50,11 +71,16 @@ google-pronouncer clear-cache hello world
 ### Global Options
 
 ```bash
+  -d, --download WORD   Download pronunciations for one or more words
+  -f, --file FILE      File containing words to download (one word per line)
+  -a, --accent {gb,us,all}  Accent to download (us=American, gb=British, all=both) (default: us)
+  -j, --jobs N         Number of parallel downloads (default: 4)
   -o, --output-dir PATH  Directory to save pronunciations (default: ./pronunciations)
   -t, --timeout SECONDS  Request timeout in seconds (default: 10)
-  -v, --verbose         Enable verbose logging
-  --no-cache           Disable cache usage
-  --force-download     Force download even if cached
+  -v, --verbose        Enable verbose logging
+  --no-cache          Disable cache usage
+  --force-download    Force download even if cached
+  --use-subdirs       Use subdirectories for each word (default: only when downloading multiple accents)
 ```
 
 ## Python Library Usage
@@ -64,25 +90,36 @@ google-pronouncer clear-cache hello world
 ```python
 from google_pronouncer import GooglePronunciationDownloader, DownloadConfig, AccentType
 
-# Create configuration
+# Create configuration (files will be saved in current directory)
 config = DownloadConfig(
-    output_dir="pronunciations",
-    use_cache=True,           # Enable caching (default: True)
-    force_download=False      # Force fresh download (default: False)
+    output_dir=".",  # Current directory
+    use_cache=True,  # Enable caching (default: True)
+    force_download=False  # Force fresh download (default: False)
+)
+
+# Or specify a different output directory
+config = DownloadConfig(
+    output_dir="./pronunciations",
+    use_cache=True,
+    force_download=False
 )
 
 # Initialize downloader
 downloader = GooglePronunciationDownloader(config)
 
-# Download single word with specific accent
+# Download US pronunciation (default)
+path = downloader.download_pronunciation("hello", AccentType.AMERICAN)
+print(f"Downloaded to: {path}")
+
+# Download British pronunciation
 path = downloader.download_pronunciation("hello", AccentType.BRITISH)
 print(f"Downloaded to: {path}")
 
-# Download all accents for a word
+# Download both accents for a word
 paths = downloader.download_all_accents("world")
 print(f"Downloaded files: {paths}")
 
-# Download multiple words
+# Download multiple words (US accent by default)
 words = ["hello", "world", "python"]
 paths = downloader.download_words(words)
 print(f"Downloaded files: {paths}")

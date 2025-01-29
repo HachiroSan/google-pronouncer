@@ -25,58 +25,35 @@ def parse_args():
         description="Download pronunciation MP3 files from Google's dictionary service"
     )
     
-    # Create subparsers for different commands
-    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
-    
-    # Download command
-    download_parser = subparsers.add_parser('download', help='Download pronunciations')
-    word_group = download_parser.add_mutually_exclusive_group(required=True)
-    word_group.add_argument(
-        "words",
-        nargs="*",
-        help="One or more words to download pronunciations for",
-        default=[]
+    # Global options
+    parser.add_argument(
+        "-d", "--download",
+        nargs="+",
+        metavar="WORD",
+        help="Download pronunciations for one or more words"
     )
-    word_group.add_argument(
+    parser.add_argument(
         "-f", "--file",
         type=argparse.FileType('r'),
         help="File containing words to download (one word per line)"
     )
-    download_parser.add_argument(
+    parser.add_argument(
         "-a", "--accent",
         choices=["gb", "us", "all"],
-        default="all",
-        help="Accent to download (default: all)"
+        default="us",
+        help="Accent to download (us=American, gb=British, all=both) (default: us)"
     )
-    download_parser.add_argument(
+    parser.add_argument(
         "-j", "--jobs",
         type=int,
         default=4,
         help="Number of parallel downloads (default: 4)"
     )
-    
-    # Cache info command
-    cache_info_parser = subparsers.add_parser('cache-info', help='Show cache information')
-    cache_info_parser.add_argument(
-        "words",
-        nargs="*",
-        help="Optional words to show cache info for. If none provided, shows all."
-    )
-    
-    # Clear cache command
-    clear_cache_parser = subparsers.add_parser('clear-cache', help='Clear cached files')
-    clear_cache_parser.add_argument(
-        "words",
-        nargs="*",
-        help="Optional words to clear cache for. If none provided, clears all."
-    )
-    
-    # Global options
     parser.add_argument(
         "-o", "--output-dir",
         type=Path,
-        default=Path("pronunciations"),
-        help="Directory to save pronunciations (default: ./pronunciations)"
+        default=Path("."),
+        help="Directory to save pronunciations (default: current directory)"
     )
     parser.add_argument(
         "-t", "--timeout",
@@ -99,11 +76,37 @@ def parse_args():
         action="store_true",
         help="Force download even if cached"
     )
+    parser.add_argument(
+        "--use-subdirs",
+        action="store_true",
+        help="Use subdirectories for each word (default: only when downloading multiple accents)"
+    )
+    
+    # Subcommands for cache management
+    subparsers = parser.add_subparsers(dest='command', help='Additional commands')
+    
+    # Cache info command
+    cache_info_parser = subparsers.add_parser('cache-info', help='Show cache information')
+    cache_info_parser.add_argument(
+        "words",
+        nargs="*",
+        help="Optional words to show cache info for. If none provided, shows all."
+    )
+    
+    # Clear cache command
+    clear_cache_parser = subparsers.add_parser('clear-cache', help='Clear cached files')
+    clear_cache_parser.add_argument(
+        "words",
+        nargs="*",
+        help="Optional words to clear cache for. If none provided, clears all."
+    )
     
     return parser.parse_args()
 
-def download_word(word: str, config: DownloadConfig, accent: str = "all") -> tuple[str, bool, List[Path]]:
+def download_word(word: str, config: DownloadConfig, accent: str = "us") -> tuple[str, bool, List[Path]]:
     """Download pronunciations for a single word."""
+    # Set use_subdirs based on whether we're downloading multiple accents
+    config.use_subdirs = config.use_subdirs or accent == "all"
     downloader = GooglePronunciationDownloader(config)
     try:
         if accent == "all":
@@ -122,7 +125,7 @@ def download_word(word: str, config: DownloadConfig, accent: str = "all") -> tup
         logging.error(f"Unexpected error processing '{word}': {e}")
         return word, False, []
 
-def process_words(words: List[str], config: DownloadConfig, accent: str = "all", jobs: int = 4) -> int:
+def process_words(words: List[str], config: DownloadConfig, accent: str = "us", jobs: int = 4) -> int:
     """Process words in parallel and return exit code."""
     # Remove duplicates while preserving order
     unique_words: List[str] = list(dict.fromkeys(word.strip().lower() for word in words if word.strip()))
@@ -210,25 +213,31 @@ def main():
         output_dir=args.output_dir,
         timeout=args.timeout,
         use_cache=not args.no_cache,
-        force_download=args.force_download
+        force_download=args.force_download,
+        use_subdirs=args.use_subdirs
     )
     
     downloader = GooglePronunciationDownloader(config)
 
     try:
-        if args.command == 'download':
+        # Handle download command (both -d and legacy 'download' command)
+        if args.download or (args.command == 'download' and args.words):
             words = []
             if args.file:
                 words.extend(line.strip() for line in args.file)
                 args.file.close()
-            words.extend(args.words)
+            if args.download:
+                words.extend(args.download)
+            elif args.command == 'download':
+                words.extend(args.words)
             return process_words(words, config, args.accent, args.jobs)
         elif args.command == 'cache-info':
             return show_cache_info(downloader, args.words)
         elif args.command == 'clear-cache':
             return clear_cache(downloader, args.words)
         else:
-            logging.error("No command specified. Use --help for usage information.")
+            if not any([args.download, args.file, args.command]):
+                logging.error("No command specified. Use -d to download or --help for usage information.")
             return 1
     except Exception as e:
         logging.error(f"Fatal error: {e}")

@@ -31,6 +31,7 @@ class DownloadConfig:
         use_cache: Whether to use cached files (default: True)
         min_file_size: Minimum valid file size in bytes (default: 1024)
         force_download: Force download even if file exists (default: False)
+        use_subdirs: Whether to use subdirectories for single accent downloads (default: False)
     """
     output_dir: Union[str, Path]
     timeout: int = 10
@@ -38,6 +39,7 @@ class DownloadConfig:
     use_cache: bool = True
     min_file_size: int = 1024  # 1KB minimum file size
     force_download: bool = False
+    use_subdirs: bool = False
 
     def __post_init__(self):
         """Convert output_dir to Path and ensure it exists."""
@@ -81,12 +83,19 @@ class GooglePronunciationDownloader:
 
     def _ensure_output_dir(self, word: str) -> Path:
         """Ensure the output directory exists for a word."""
-        word_dir = self.config.output_dir / word
+        if not self.config.use_subdirs:
+            return self.config.output_dir
+        word_dir = self.config.output_dir / word.lower()
         word_dir.mkdir(parents=True, exist_ok=True)
         return word_dir
 
     def _get_cache_path(self, word: str, accent: AccentType) -> Path:
         """Get the path where the file would be cached."""
+        word = word.lower()
+        # For single accent downloads, store directly in output directory
+        if not self.config.use_subdirs:
+            return self.config.output_dir / f"{word}_{accent.value}.mp3"
+        # For multiple accents or when subdirs are requested, use word subdirectories
         word_dir = self._ensure_output_dir(word)
         return word_dir / f"{word}_{accent.value}.mp3"
 
@@ -166,18 +175,28 @@ class GooglePronunciationDownloader:
         """
         try:
             if word:
-                word_dir = self._ensure_output_dir(word.lower())
-                if word_dir.exists():
-                    for file in word_dir.glob("*.mp3"):
-                        file.unlink()
-                    word_dir.rmdir()
-                    logger.info(f"Cleared cache for word: {word}")
-            else:
-                for word_dir in self.config.output_dir.iterdir():
-                    if word_dir.is_dir():
+                word = word.lower()
+                if self.config.use_subdirs:
+                    word_dir = self._ensure_output_dir(word)
+                    if word_dir.exists():
                         for file in word_dir.glob("*.mp3"):
                             file.unlink()
-                        word_dir.rmdir()
+                        if word_dir != self.config.output_dir:  # Don't delete main output dir
+                            word_dir.rmdir()
+                else:
+                    for file in self.config.output_dir.glob(f"{word}_*.mp3"):
+                        file.unlink()
+                logger.info(f"Cleared cache for word: {word}")
+            else:
+                if self.config.use_subdirs:
+                    for word_dir in self.config.output_dir.iterdir():
+                        if word_dir.is_dir():
+                            for file in word_dir.glob("*.mp3"):
+                                file.unlink()
+                            word_dir.rmdir()
+                else:
+                    for file in self.config.output_dir.glob("*.mp3"):
+                        file.unlink()
                 logger.info("Cleared all cache")
         except OSError as e:
             logger.error(f"Error clearing cache: {e}")
@@ -195,20 +214,27 @@ class GooglePronunciationDownloader:
         try:
             if word:
                 word = word.lower()
-                word_dir = self._ensure_output_dir(word)
-                if word_dir.exists():
-                    info[word] = {
-                        accent.value: self._is_valid_cache(self._get_cache_path(word, accent))
-                        for accent in AccentType
-                    }
+                info[word] = {}
+                for accent in AccentType:
+                    cache_path = self._get_cache_path(word, accent)
+                    info[word][accent.value] = self._is_valid_cache(cache_path)
             else:
-                for word_dir in self.config.output_dir.iterdir():
-                    if word_dir.is_dir():
-                        word = word_dir.name
-                        info[word] = {
-                            accent.value: self._is_valid_cache(self._get_cache_path(word, accent))
-                            for accent in AccentType
-                        }
+                if self.config.use_subdirs:
+                    for word_dir in self.config.output_dir.iterdir():
+                        if word_dir.is_dir():
+                            word = word_dir.name
+                            info[word] = {
+                                accent.value: self._is_valid_cache(self._get_cache_path(word, accent))
+                                for accent in AccentType
+                            }
+                else:
+                    # Scan for all MP3 files in the output directory
+                    for file in self.config.output_dir.glob("*.mp3"):
+                        if file.stem.count("_") == 1:  # Ensure filename matches our pattern
+                            word, accent = file.stem.rsplit("_", 1)
+                            if word not in info:
+                                info[word] = {}
+                            info[word][accent] = self._is_valid_cache(file)
         except OSError as e:
             logger.error(f"Error getting cache info: {e}")
         
