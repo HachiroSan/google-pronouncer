@@ -42,7 +42,7 @@ jobs:
     # Specify the environment exactly as configured in PyPI
     environment:
       name: pypi
-      url: https://pypi.org/p/google_pronouncer
+      url: https://pypi.org/p/google-pronouncer
 
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing

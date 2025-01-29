@@ -5,18 +5,18 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="google_pronouncer",
+    name="google-pronouncer",
     version="0.2.0",
     author="Hachiro",
     author_email="farhad@farhad.my",
     description="A library for downloading pronunciation MP3 files from Google's dictionary service",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/HachiroSan/google_pronouncer",
+    url="https://github.com/HachiroSan/google-pronouncer",
     project_urls={
-        "Homepage": "https://github.com/HachiroSan/google_pronouncer",
-        "Bug Tracker": "https://github.com/HachiroSan/google_pronouncer/issues",
-        "Documentation": "https://github.com/HachiroSan/google_pronouncer#readme",
+        "Homepage": "https://github.com/HachiroSan/google-pronouncer",
+        "Bug Tracker": "https://github.com/HachiroSan/google-pronouncer/issues",
+        "Documentation": "https://github.com/HachiroSan/google-pronouncer#readme",
     },
     classifiers=[
         "Development Status :: 4 - Beta",
