@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="google-pronouncer",
-    version="0.2.0",
+    version="0.2.1",
     author="Hachiro",
     author_email="farhad@farhad.my",
     description="A library for downloading pronunciation MP3 files from Google's dictionary service",
