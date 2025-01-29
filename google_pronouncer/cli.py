@@ -4,8 +4,10 @@ import argparse
 import json
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import List
+from typing import List, Set
+from tqdm import tqdm
 
 from .downloader import GooglePronunciationDownloader, DownloadConfig, AccentType, DownloadError, CacheError
 
@@ -28,16 +30,29 @@ def parse_args():
     
     # Download command
     download_parser = subparsers.add_parser('download', help='Download pronunciations')
-    download_parser.add_argument(
+    word_group = download_parser.add_mutually_exclusive_group(required=True)
+    word_group.add_argument(
         "words",
-        nargs="+",
-        help="One or more words to download pronunciations for"
+        nargs="*",
+        help="One or more words to download pronunciations for",
+        default=[]
+    )
+    word_group.add_argument(
+        "-f", "--file",
+        type=argparse.FileType('r'),
+        help="File containing words to download (one word per line)"
     )
     download_parser.add_argument(
         "-a", "--accent",
         choices=["gb", "us", "all"],
         default="all",
         help="Accent to download (default: all)"
+    )
+    download_parser.add_argument(
+        "-j", "--jobs",
+        type=int,
+        default=4,
+        help="Number of parallel downloads (default: 4)"
     )
     
     # Cache info command
@@ -87,31 +102,66 @@ def parse_args():
     
     return parser.parse_args()
 
-def process_words(words: List[str], config: DownloadConfig, accent: str = "all") -> int:
-    """Process words and return exit code."""
+def download_word(word: str, config: DownloadConfig, accent: str = "all") -> tuple[str, bool, List[Path]]:
+    """Download pronunciations for a single word."""
     downloader = GooglePronunciationDownloader(config)
-    success = True
+    try:
+        if accent == "all":
+            paths = downloader.download_all_accents(word)
+        else:
+            path = downloader.download_pronunciation(word, AccentType(accent))
+            paths = [path] if path else []
 
-    for word in words:
-        try:
-            if accent == "all":
-                paths = downloader.download_all_accents(word)
-            else:
-                path = downloader.download_pronunciation(word, AccentType(accent))
-                paths = [path] if path else []
+        success = bool(paths)
+        return word, success, paths
 
-            if not paths:
-                logging.error(f"No pronunciations downloaded for '{word}'")
-                success = False
+    except (DownloadError, CacheError) as e:
+        logging.error(f"Error processing '{word}': {e}")
+        return word, False, []
+    except Exception as e:
+        logging.error(f"Unexpected error processing '{word}': {e}")
+        return word, False, []
 
-        except (DownloadError, CacheError) as e:
-            logging.error(f"Error processing '{word}': {e}")
-            success = False
-        except Exception as e:
-            logging.error(f"Unexpected error processing '{word}': {e}")
-            success = False
+def process_words(words: List[str], config: DownloadConfig, accent: str = "all", jobs: int = 4) -> int:
+    """Process words in parallel and return exit code."""
+    # Remove duplicates while preserving order
+    unique_words: List[str] = list(dict.fromkeys(word.strip().lower() for word in words if word.strip()))
+    
+    if not unique_words:
+        logging.error("No valid words provided")
+        return 1
 
-    return 0 if success else 1
+    success_count = 0
+    failed_words = []
+    
+    print(f"\nDownloading pronunciations for {len(unique_words)} words...")
+    
+    with ThreadPoolExecutor(max_workers=jobs) as executor:
+        futures = {
+            executor.submit(download_word, word, config, accent): word 
+            for word in unique_words
+        }
+        
+        with tqdm(total=len(unique_words), unit='word') as pbar:
+            for future in as_completed(futures):
+                word, success, paths = future.result()
+                pbar.update(1)
+                
+                if success:
+                    success_count += 1
+                    if paths:
+                        tqdm.write(f"✓ {word}: {', '.join(str(p) for p in paths)}")
+                else:
+                    failed_words.append(word)
+                    tqdm.write(f"✗ {word}: Failed to download")
+
+    # Print summary
+    print(f"\nDownload Summary:")
+    print(f"✓ Successfully downloaded: {success_count}/{len(unique_words)}")
+    if failed_words:
+        print(f"✗ Failed words: {', '.join(failed_words)}")
+
+    return 0 if not failed_words else 1
 
 def show_cache_info(downloader: GooglePronunciationDownloader, words: List[str] = None) -> int:
     """Show cache information."""
@@ -142,8 +192,10 @@ def clear_cache(downloader: GooglePronunciationDownloader, words: List[str] = No
         if words:
             for word in words:
                 downloader.clear_cache(word)
+                print(f"Cleared cache for '{word}'")
         else:
             downloader.clear_cache()
+            print("Cleared all cache")
         return 0
     except Exception as e:
         logging.error(f"Error clearing cache: {e}")
@@ -165,7 +217,12 @@ def main():
 
     try:
         if args.command == 'download':
-            return process_words(args.words, config, args.accent)
+            words = []
+            if args.file:
+                words.extend(line.strip() for line in args.file)
+                args.file.close()
+            words.extend(args.words)
+            return process_words(words, config, args.accent, args.jobs)
         elif args.command == 'cache-info':
             return show_cache_info(downloader, args.words)
         elif args.command == 'clear-cache':

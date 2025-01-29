@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="google-pronouncer",
-    version="0.1.0",
+    version="0.2.0",
     author="Hachiro",
     author_email="farhad@farhad.my",
     description="A library for downloading pronunciation MP3 files from Google's dictionary service",
@@ -39,6 +39,7 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "requests>=2.31.0,<3.0.0",
+        "tqdm>=4.65.0",
     ],
     entry_points={
         "console_scripts": [
