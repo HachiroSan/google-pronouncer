@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/google-pronouncer
+      url: https://pypi.org/p/google_pronouncer
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
 
